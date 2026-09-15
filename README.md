@@ -2,6 +2,117 @@
 
 This document describes the end-to-end setup for enabling multicast routing between two OpenShift User Defined Networks (UDNs) using a Fedora bastion VM running FRR, dnsmasq, smcroute, and nftables.
 
+## Automated Deployment with Ansible
+
+An Ansible playbook is included to deploy the entire solution automatically.
+
+### Prerequisites
+
+- Ansible 2.14+
+- Python `kubernetes` package (for `kubernetes.core` collection)
+- `oc` CLI logged into the target OpenShift cluster (or `KUBECONFIG` set)
+- SSH access to the bastion VM (after it boots)
+
+Install the required Ansible collections:
+
+```bash
+ansible-galaxy collection install kubernetes.core ansible.posix
+pip install kubernetes
+```
+
+### Configuration
+
+Edit `group_vars/all.yml` to customize:
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `namespace` | OpenShift namespace to create | `system1` |
+| `networks` | List of UDN definitions (name, CIDR, interface, DHCP range) | 2 networks |
+| `bastion.*` | Bastion VM specs (memory, disk, credentials, SSH key) | Fedora, 2Gi, 30Gi |
+| `test_vms` | List of test VMs with their UDN attachment | 3 VMs |
+| `dhcp_lease_time` | DHCP lease duration | `12h` |
+| `multicast_ttl` | TTL value for the nftables mangle rule | `64` |
+
+### Deployment
+
+**Step 1: Deploy OpenShift resources and VMs**
+
+```bash
+ansible-playbook site.yml --tags "" -l localhost
+```
+
+This creates the namespace (with multicast annotation), UDN resources, bastion VM, and test VMs. Wait for all VMs to boot and obtain their network addresses.
+
+**Step 2: Get the bastion VM IP**
+
+Once the bastion VM is running, get its masquerade IP (the one reachable via SSH):
+
+```bash
+oc get vmi bashtion -n system1 -o jsonpath='{.status.interfaces[0].ipAddress}'
+```
+
+Or use the known static IP if the bastion is on a routable network.
+
+**Step 3: Configure the bastion**
+
+Set the bastion IP and run the configuration play:
+
+```bash
+ansible-playbook site.yml -l bastion -e bastion_ip=<BASTION_IP>
+```
+
+This SSHes into the bastion and installs/configures FRR, dnsmasq, smcroute, and nftables with all the multicast routing rules.
+
+**Full deployment (both steps combined):**
+
+```bash
+ansible-playbook site.yml -e bastion_ip=<BASTION_IP>
+```
+
+### Playbook Structure
+
+```
+├── site.yml                          # Main playbook (2 plays)
+├── inventory.yml                     # Inventory with bastion host
+├── group_vars/all.yml                # All configurable variables
+└── roles/
+    ├── openshift_resources/          # Namespace + UDN CRs
+    ├── bastion_vm/                   # KubeVirt VM for the router
+    ├── test_vms/                     # KubeVirt VMs on each UDN
+    └── bastion_config/               # FRR, dnsmasq, smcroute, nftables
+```
+
+### Adding More Networks
+
+To add a third UDN network, add an entry to `networks` in `group_vars/all.yml`:
+
+```yaml
+networks:
+  - name: udn-1
+    interface: enp2s0
+    cidr: 10.10.20.0/24
+    gateway: 10.10.20.1
+    dhcp_range_start: 10.10.20.100
+    dhcp_range_end: 10.10.20.200
+    netmask: 255.255.255.0
+  - name: udn-2
+    interface: enp3s0
+    cidr: 10.10.10.0/24
+    gateway: 10.10.10.1
+    dhcp_range_start: 10.10.10.100
+    dhcp_range_end: 10.10.10.200
+    netmask: 255.255.255.0
+  - name: udn-3
+    interface: enp4s0
+    cidr: 10.10.30.0/24
+    gateway: 10.10.30.1
+    dhcp_range_start: 10.10.30.100
+    dhcp_range_end: 10.10.30.200
+    netmask: 255.255.255.0
+```
+
+All templates dynamically generate configs for any number of networks — UDN CRs, dnsmasq DHCP scopes, smcroute forwarding rules, cross-network static routes, and the bastion VM's interface list all scale automatically.
+
 ## Architecture Overview
 
 ```mermaid
