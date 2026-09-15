@@ -1,0 +1,10 @@
+frr version 10.7
+frr defaults traditional
+hostname {{ frr_hostname }}
+log syslog informational
+service integrated-vtysh-config
+{% for network in networks %}
+
+interface {{ network.interface }}
+ description {{ network.name }} network ({{ network.cidr }})
+{% endfor %}

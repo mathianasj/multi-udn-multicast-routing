@@ -1,0 +1,8 @@
+#!/bin/bash
+# Enable allmulticast on UDN interfaces when they come up.
+# Required so the NIC accepts all multicast frames, not just joined groups.
+{% for network in networks %}
+if [ "$1" = "{{ network.interface }}" ] && [ "$2" = "up" ]; then
+    ip link set "$1" allmulticast on
+fi
+{% endfor %}

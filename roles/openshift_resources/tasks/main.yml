@@ -1,0 +1,25 @@
+---
+- name: Create namespace with multicast enabled
+  kubernetes.core.k8s:
+    state: present
+    definition: "{{ lookup('template', 'namespace.yml.j2') }}"
+
+- name: Create UserDefinedNetwork resources
+  kubernetes.core.k8s:
+    state: present
+    definition: "{{ lookup('template', 'udn.yml.j2') }}"
+  loop: "{{ networks }}"
+  loop_control:
+    loop_var: network
+
+- name: Wait for UDN NetworkAttachmentDefinitions to be created
+  kubernetes.core.k8s_info:
+    api_version: k8s.cni.cncf.io/v1
+    kind: NetworkAttachmentDefinition
+    namespace: "{{ namespace }}"
+    name: "{{ item.name }}"
+  register: nad_result
+  until: nad_result.resources | length > 0
+  retries: 30
+  delay: 5
+  loop: "{{ networks }}"

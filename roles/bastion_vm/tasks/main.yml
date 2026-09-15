@@ -1,0 +1,18 @@
+---
+- name: Create bastion VirtualMachine
+  kubernetes.core.k8s:
+    state: present
+    definition: "{{ lookup('template', 'bastion-vm.yml.j2') }}"
+
+- name: Wait for bastion VM to be ready
+  kubernetes.core.k8s_info:
+    api_version: kubevirt.io/v1
+    kind: VirtualMachine
+    namespace: "{{ namespace }}"
+    name: "{{ bastion.name }}"
+  register: bastion_vm_result
+  until:
+    - bastion_vm_result.resources | length > 0
+    - bastion_vm_result.resources[0].status.ready | default(false)
+  retries: 60
+  delay: 10

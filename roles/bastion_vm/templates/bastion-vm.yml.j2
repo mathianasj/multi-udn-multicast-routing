@@ -1,0 +1,96 @@
+apiVersion: kubevirt.io/v1
+kind: VirtualMachine
+metadata:
+  name: {{ bastion.name }}
+  namespace: {{ namespace }}
+  labels:
+    app: {{ bastion.name }}
+    kubevirt.io/dynamic-credentials-support: "true"
+    vm.kubevirt.io/template: fedora-server-small
+    vm.kubevirt.io/template.namespace: openshift
+spec:
+  dataVolumeTemplates:
+    - apiVersion: cdi.kubevirt.io/v1beta1
+      kind: DataVolume
+      metadata:
+        name: {{ bastion.name }}
+      spec:
+        sourceRef:
+          kind: DataSource
+          name: {{ bastion.datasource_name }}
+          namespace: {{ bastion.datasource_namespace }}
+        storage:
+          resources:
+            requests:
+              storage: {{ bastion.disk_size }}
+  runStrategy: RerunOnFailure
+  template:
+    metadata:
+      annotations:
+        vm.kubevirt.io/flavor: small
+        vm.kubevirt.io/os: fedora
+        vm.kubevirt.io/workload: server
+      labels:
+        kubevirt.io/domain: {{ bastion.name }}
+        kubevirt.io/size: small
+    spec:
+      architecture: amd64
+      domain:
+        cpu:
+          cores: {{ bastion.cores }}
+          sockets: 1
+          threads: 1
+        devices:
+          disks:
+            - disk:
+                bus: virtio
+              name: rootdisk
+            - disk:
+                bus: virtio
+              name: cloudinitdisk
+          interfaces:
+            - masquerade: {}
+              model: virtio
+              name: default
+{% for network in networks %}
+            - bridge: {}
+              model: virtio
+              name: nic-{{ network.name }}
+{% endfor %}
+          rng: {}
+        features:
+          acpi: {}
+          smm:
+            enabled: true
+        firmware:
+          bootloader:
+            efi: {}
+        machine:
+          type: pc-q35-rhel9.8.0
+        memory:
+          guest: {{ bastion.memory }}
+        resources: {}
+      networks:
+        - name: default
+          pod: {}
+{% for network in networks %}
+        - multus:
+            networkName: {{ network.name }}
+          name: nic-{{ network.name }}
+{% endfor %}
+      terminationGracePeriodSeconds: 180
+      volumes:
+        - dataVolume:
+            name: {{ bastion.name }}
+          name: rootdisk
+        - cloudInitNoCloud:
+            userData: |
+              #cloud-config
+              user: {{ bastion.cloud_init_user }}
+              password: {{ bastion.cloud_init_password }}
+              chpasswd: { expire: False }
+{% if bastion.ssh_authorized_key is defined %}
+              ssh_authorized_keys:
+                - {{ bastion.ssh_authorized_key }}
+{% endif %}
+          name: cloudinitdisk

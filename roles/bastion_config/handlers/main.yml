@@ -1,0 +1,19 @@
+---
+- name: restart frr
+  ansible.builtin.systemd:
+    name: frr
+    state: restarted
+
+- name: restart dnsmasq
+  ansible.builtin.systemd:
+    name: dnsmasq
+    state: restarted
+
+- name: restart smcroute
+  ansible.builtin.systemd:
+    name: smcroute
+    state: restarted
+
+- name: reload nftables
+  ansible.builtin.command:
+    cmd: nft -f /etc/nftables/udn-multicast.nft

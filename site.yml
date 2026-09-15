@@ -1,0 +1,16 @@
+---
+- name: Deploy UDN multicast routing solution
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  roles:
+    - openshift_resources
+    - bastion_vm
+    - test_vms
+
+- name: Configure bastion VM as multicast router
+  hosts: bastion
+  become: true
+  gather_facts: true
+  roles:
+    - bastion_config

@@ -1,0 +1,12 @@
+# TTL threshold (note: may not take effect in all smcroute versions,
+# nftables TTL mangle is the reliable workaround)
+{% for network in networks %}
+phyint {{ network.interface }} ttl-threshold 0
+{% endfor %}
+
+# Forward all multicast bidirectionally between UDN interfaces
+{% for network in networks %}
+{% for other_network in networks if other_network.name != network.name %}
+mroute from {{ network.interface }} group 224.0.0.0/4 to {{ other_network.interface }}
+{% endfor %}
+{% endfor %}

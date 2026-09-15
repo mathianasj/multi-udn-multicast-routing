@@ -1,0 +1,22 @@
+---
+- name: Create test VirtualMachines
+  kubernetes.core.k8s:
+    state: present
+    definition: "{{ lookup('template', 'test-vm.yml.j2') }}"
+  loop: "{{ test_vms }}"
+  loop_control:
+    loop_var: vm
+
+- name: Wait for test VMs to be ready
+  kubernetes.core.k8s_info:
+    api_version: kubevirt.io/v1
+    kind: VirtualMachine
+    namespace: "{{ namespace }}"
+    name: "{{ item.name }}"
+  register: vm_result
+  until:
+    - vm_result.resources | length > 0
+    - vm_result.resources[0].status.ready | default(false)
+  retries: 60
+  delay: 10
+  loop: "{{ test_vms }}"

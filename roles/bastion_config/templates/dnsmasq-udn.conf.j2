@@ -1,0 +1,19 @@
+# Listen only on UDN interfaces
+{% for network in networks %}
+interface={{ network.interface }}
+{% endfor %}
+bind-interfaces
+{% for network in networks %}
+
+# {{ network.name }}: {{ network.cidr }} on {{ network.interface }}
+dhcp-range={{ network.interface }},{{ network.dhcp_range_start }},{{ network.dhcp_range_end }},{{ network.netmask }},{{ dhcp_lease_time }}
+dhcp-option={{ network.interface }},option:router,{{ network.gateway }}
+dhcp-option={{ network.interface }},option:dns-server,{{ network.gateway }}
+{% endfor %}
+
+# Cross-network static routes via DHCP option 121
+{% for network in networks %}
+{% for other_network in networks if other_network.name != network.name %}
+dhcp-option={{ network.interface }},option:classless-static-route,{{ other_network.cidr }},{{ network.gateway }}
+{% endfor %}
+{% endfor %}

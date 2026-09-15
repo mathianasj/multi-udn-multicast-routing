@@ -1,0 +1,83 @@
+apiVersion: kubevirt.io/v1
+kind: VirtualMachine
+metadata:
+  name: {{ vm.name }}
+  namespace: {{ namespace }}
+  labels:
+    app: {{ vm.name }}
+    kubevirt.io/dynamic-credentials-support: "true"
+    vm.kubevirt.io/template: fedora-server-small
+    vm.kubevirt.io/template.namespace: openshift
+spec:
+  dataVolumeTemplates:
+    - apiVersion: cdi.kubevirt.io/v1beta1
+      kind: DataVolume
+      metadata:
+        name: {{ vm.name }}
+      spec:
+        sourceRef:
+          kind: DataSource
+          name: {{ datasource_name }}
+          namespace: {{ datasource_namespace }}
+        storage:
+          resources:
+            requests:
+              storage: {{ vm.disk_size }}
+  runStrategy: RerunOnFailure
+  template:
+    metadata:
+      annotations:
+        vm.kubevirt.io/flavor: small
+        vm.kubevirt.io/os: fedora
+        vm.kubevirt.io/workload: server
+      labels:
+        kubevirt.io/domain: {{ vm.name }}
+        kubevirt.io/size: small
+    spec:
+      architecture: amd64
+      domain:
+        cpu:
+          cores: {{ vm.cores }}
+          sockets: 1
+          threads: 1
+        devices:
+          disks:
+            - disk:
+                bus: virtio
+              name: rootdisk
+            - disk:
+                bus: virtio
+              name: cloudinitdisk
+          interfaces:
+            - bridge: {}
+              model: virtio
+              name: nic-{{ vm.network }}
+          rng: {}
+        features:
+          acpi: {}
+          smm:
+            enabled: true
+        firmware:
+          bootloader:
+            efi: {}
+        machine:
+          type: pc-q35-rhel9.8.0
+        memory:
+          guest: {{ vm.memory }}
+        resources: {}
+      networks:
+        - multus:
+            networkName: {{ vm.network }}
+          name: nic-{{ vm.network }}
+      terminationGracePeriodSeconds: 180
+      volumes:
+        - dataVolume:
+            name: {{ vm.name }}
+          name: rootdisk
+        - cloudInitNoCloud:
+            userData: |
+              #cloud-config
+              user: {{ vm.cloud_init_user }}
+              password: {{ vm.cloud_init_password }}
+              chpasswd: { expire: False }
+          name: cloudinitdisk

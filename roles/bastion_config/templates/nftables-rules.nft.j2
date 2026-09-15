@@ -1,0 +1,18 @@
+table ip nat {
+    chain postrouting {
+        type nat hook postrouting priority srcnat; policy accept;
+        oifname "{{ bastion.upstream_interface }}" masquerade
+    }
+}
+
+# Rewrite TTL on incoming multicast packets.
+# The Linux kernel's multicast forwarding drops packets where TTL <= VIF threshold.
+# Multicast senders default to TTL=1 and smcroute sets threshold=1, so packets
+# are dropped (1 <= 1 = true). This rule bumps TTL to {{ multicast_ttl }} in the
+# prerouting hook, before the kernel's forwarding decision.
+table ip mangle {
+    chain prerouting {
+        type filter hook prerouting priority mangle; policy accept;
+        ip daddr 224.0.0.0/4 ip ttl set {{ multicast_ttl }}
+    }
+}

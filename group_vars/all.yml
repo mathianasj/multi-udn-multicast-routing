@@ -1,0 +1,70 @@
+---
+# Namespace configuration
+namespace: system1
+
+# UDN Network definitions
+networks:
+  - name: udn-1
+    interface: enp2s0
+    cidr: 10.10.20.0/24
+    gateway: 10.10.20.1
+    dhcp_range_start: 10.10.20.100
+    dhcp_range_end: 10.10.20.200
+    netmask: 255.255.255.0
+  - name: udn-2
+    interface: enp3s0
+    cidr: 10.10.10.0/24
+    gateway: 10.10.10.1
+    dhcp_range_start: 10.10.10.100
+    dhcp_range_end: 10.10.10.200
+    netmask: 255.255.255.0
+
+# Bastion VM configuration
+bastion:
+  name: bashtion
+  upstream_interface: enp1s0
+  memory: 2Gi
+  cores: 1
+  disk_size: 30Gi
+  datasource_name: fedora
+  datasource_namespace: openshift-virtualization-os-images
+  cloud_init_user: fedora
+  cloud_init_password: changeme123
+  ssh_key_path: ~/.ssh/id_rsa_fips
+
+# Test VM definitions
+test_vms:
+  - name: vm1
+    network: udn-1
+    memory: 2Gi
+    cores: 1
+    disk_size: 30Gi
+    cloud_init_user: fedora
+    cloud_init_password: changeme123
+  - name: vm2
+    network: udn-1
+    memory: 2Gi
+    cores: 1
+    disk_size: 30Gi
+    cloud_init_user: fedora
+    cloud_init_password: changeme123
+  - name: vm3
+    network: udn-2
+    memory: 2Gi
+    cores: 1
+    disk_size: 30Gi
+    cloud_init_user: fedora
+    cloud_init_password: changeme123
+
+# DHCP configuration
+dhcp_lease_time: 12h
+
+# Multicast configuration
+multicast_ttl: 64
+
+# FRR configuration
+frr_hostname: router
+
+# DataSource defaults (shared across all VMs)
+datasource_name: fedora
+datasource_namespace: openshift-virtualization-os-images

@@ -1,0 +1,152 @@
+---
+- name: Enable IP forwarding
+  ansible.posix.sysctl:
+    name: net.ipv4.ip_forward
+    value: "1"
+    sysctl_file: /etc/sysctl.d/99-ip-forward.conf
+    state: present
+    reload: true
+
+- name: Install required packages
+  ansible.builtin.dnf:
+    name:
+      - frr
+      - dnsmasq
+      - smcroute
+      - tcpdump
+      - socat
+    state: present
+
+- name: Disable PIM in FRR daemons
+  ansible.builtin.lineinfile:
+    path: /etc/frr/daemons
+    regexp: "^pimd="
+    line: "pimd=no"
+  notify: restart frr
+
+- name: Configure FRR
+  ansible.builtin.template:
+    src: frr.conf.j2
+    dest: /etc/frr/frr.conf
+    owner: frr
+    group: frr
+    mode: "0640"
+  notify: restart frr
+
+- name: Enable and start FRR
+  ansible.builtin.systemd:
+    name: frr
+    enabled: true
+    state: started
+
+- name: Configure dnsmasq for DHCP and DNS
+  ansible.builtin.template:
+    src: dnsmasq-udn.conf.j2
+    dest: /etc/dnsmasq.d/udn-dhcp.conf
+    owner: root
+    group: root
+    mode: "0644"
+  notify: restart dnsmasq
+
+- name: Enable and start dnsmasq
+  ansible.builtin.systemd:
+    name: dnsmasq
+    enabled: true
+    state: started
+
+- name: Configure smcroute for static multicast forwarding
+  ansible.builtin.template:
+    src: smcroute.conf.j2
+    dest: /etc/smcroute.conf
+    owner: root
+    group: root
+    mode: "0644"
+  notify: restart smcroute
+
+- name: Enable and start smcroute
+  ansible.builtin.systemd:
+    name: smcroute
+    enabled: true
+    state: started
+
+- name: Enable allmulticast on UDN interfaces
+  ansible.builtin.command:
+    cmd: "ip link set {{ item.interface }} allmulticast on"
+  loop: "{{ networks }}"
+  changed_when: true
+
+- name: Create NetworkManager dispatcher for persistent allmulticast
+  ansible.builtin.template:
+    src: 99-allmulti.j2
+    dest: /etc/NetworkManager/dispatcher.d/99-allmulti
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Configure nftables rules (NAT + TTL mangle)
+  ansible.builtin.template:
+    src: nftables-rules.nft.j2
+    dest: /etc/nftables/udn-multicast.nft
+    owner: root
+    group: root
+    mode: "0644"
+  notify: reload nftables
+
+- name: Include nftables rules in main config
+  ansible.builtin.lineinfile:
+    path: /etc/sysconfig/nftables.conf
+    line: 'include "/etc/nftables/udn-multicast.nft"'
+    state: present
+  notify: reload nftables
+
+- name: Enable nftables service
+  ansible.builtin.systemd:
+    name: nftables
+    enabled: true
+    state: started
+
+- name: Load nftables rules immediately
+  ansible.builtin.command:
+    cmd: nft -f /etc/nftables/udn-multicast.nft
+  changed_when: true
+
+- name: Flush handlers
+  ansible.builtin.meta: flush_handlers
+
+- name: Verify IP forwarding
+  ansible.builtin.command:
+    cmd: sysctl -n net.ipv4.ip_forward
+  register: ip_forward_result
+  changed_when: false
+  failed_when: ip_forward_result.stdout != "1"
+
+- name: Verify FRR is running
+  ansible.builtin.systemd:
+    name: frr
+  register: frr_status
+  failed_when: frr_status.status.ActiveState != "active"
+
+- name: Verify dnsmasq is running
+  ansible.builtin.systemd:
+    name: dnsmasq
+  register: dnsmasq_status
+  failed_when: dnsmasq_status.status.ActiveState != "active"
+
+- name: Verify smcroute is running
+  ansible.builtin.systemd:
+    name: smcroute
+  register: smcroute_status
+  failed_when: smcroute_status.status.ActiveState != "active"
+
+- name: Verify multicast forwarding is enabled in kernel
+  ansible.builtin.command:
+    cmd: cat /proc/sys/net/ipv4/conf/all/mc_forwarding
+  register: mc_forwarding_result
+  changed_when: false
+  failed_when: mc_forwarding_result.stdout != "1"
+
+- name: Verify allmulticast is set on interfaces
+  ansible.builtin.shell:
+    cmd: "ip link show {{ item.interface }} | grep -q ALLMULTI"
+  loop: "{{ networks }}"
+  changed_when: false
